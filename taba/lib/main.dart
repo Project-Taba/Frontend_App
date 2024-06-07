@@ -20,10 +20,7 @@ void main() async {
 
   //구글 광고 기능 초기화 하기
   MobileAds.instance.initialize();
-  //runApp() 메서드 호출 전에 카카오 Flutter SDK를 초기화해야 함
-  KakaoSdk.init(
-      nativeAppKey: Config.kakaoNativeAppKey,
-      javaScriptAppKey: Config.kakaoJavascriptAppKey);
+
   runApp(const MyApp());
 }
 
