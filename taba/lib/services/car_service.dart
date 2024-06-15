@@ -14,7 +14,7 @@ class CarService {
       headers: <String, String>{
         'Content-Type': 'application/json; charset=UTF-8',
       },
-      body: utf8.encode(jsonEncode(car.toJson())), // UTF-8 인코딩 사용
+      body: jsonEncode(car.toJson()), // UTF-8 인코딩 사용
     );
 
     final responseData =
@@ -39,26 +39,29 @@ class CarService {
         json.decode(utf8.decode(response.bodyBytes)); // UTF-8 디코딩 사용
 
     if (responseData['success'] == true) {
+      print(Car.fromJson(responseData['data']));
+
       return Car.fromJson(responseData['data']);
     } else {
       throw Exception('Failed to fetch car: ${responseData['error']}');
     }
   }
 
-  //PUT 요청: 차량 데이터 업데이트
+  // PUT 요청: 차량 데이터 업데이트
   Future<Car> updateCar(String id, Car car) async {
     final response = await http.put(
       Uri.parse('$baseUrl/api/cars/$id'),
       headers: {
         'Content-Type': 'application/json; charset=UTF-8',
       },
-      body: utf8.encode(jsonEncode(car.toJson())), // UTF-8 인코딩 사용
+      body: jsonEncode(car.toJson()), // UTF-8 인코딩 사용
     );
 
     final responseData =
         json.decode(utf8.decode(response.bodyBytes)); // UTF-8 디코딩 사용
 
     if (responseData['success'] == true) {
+      print(Car.fromJson(responseData['data']));
       print('Car updated successfully.');
       return Car.fromJson(responseData['data']);
     } else {
@@ -99,23 +102,25 @@ class CarService {
     }
   }
 
-  //PUT 요청: 차량 점수 업데이트
-  Future<Car> updateCarScore(String id, Car car) async {
+  // PUT 요청: 차량 점수 업데이트
+  Future<Car> updateCarScore(String id, int newScore) async {
     final response = await http.put(
       Uri.parse('$baseUrl/api/cars/score/$id'),
       headers: {
         'Content-Type': 'application/json; charset=UTF-8',
       },
-      body: utf8.encode(jsonEncode(car.toJson())), // UTF-8 인코딩 사용
+      body: jsonEncode({'driving_score': newScore}), // 점수만 업데이트
     );
 
     final responseData =
         json.decode(utf8.decode(response.bodyBytes)); // UTF-8 디코딩 사용
 
     if (responseData['success'] == true) {
-      print('Car updated successfully.');
+      print('차 점수 업데이트 내용:');
+      print('Data: ${responseData['data']['driving_score']}'); // 'data' 필드 출력
       return Car.fromJson(responseData['data']);
     } else {
+      print('Failed to update car: ${responseData['error']}');
       throw Exception('Failed to update car: ${responseData['error']}');
     }
   }
