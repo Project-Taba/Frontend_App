@@ -1,92 +1,200 @@
 import 'dart:convert';
+
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:taba/config.dart';
+import 'package:taba/models/car_model.dart';
 import 'package:taba/screen/taba_main/taba_main_page.dart';
 import 'package:taba/services/car_service.dart';
-import 'package:taba/models/car_model.dart';
+import 'package:taba/widgets/bar/sub_app_bar.dart';
+import 'package:taba/widgets/dialog/custom_alter_dialog.dart';
+import 'package:taba/widgets/dialog/insurance_dialog.dart';
+import 'package:taba/widgets/dialog/yes_no.dart';
 
-class UserCarInformation extends StatefulWidget {
+class CarAddInformation extends StatefulWidget {
   final int userId;
   final int carId;
 
-  const UserCarInformation({
-    super.key,
-    required this.userId,
-    required this.carId,
-  });
+  const CarAddInformation({Key? key, required this.userId, required this.carId})
+      : super(key: key);
 
   @override
-  State<UserCarInformation> createState() => _UserCarInformationState();
+  _CarAddInformationState createState() => _CarAddInformationState();
 }
 
-class _UserCarInformationState extends State<UserCarInformation> {
-  TextEditingController carNameController = TextEditingController();
-  TextEditingController carYearController = TextEditingController();
-  TextEditingController insuranceInfoController = TextEditingController();
-  TextEditingController carNumberController = TextEditingController();
-  TextEditingController carSizeController = TextEditingController();
-  String? currentImage;
-  final int _selectedIndex = 3;
+class _CarAddInformationState extends State<CarAddInformation> {
+  final TextEditingController _dateController = TextEditingController();
+  final TextEditingController _carController = TextEditingController();
+  final TextEditingController _insuranceController = TextEditingController();
+  final TextEditingController _carNumberController = TextEditingController();
+  final TextEditingController _mileageController = TextEditingController();
+
+  String? _selectedCarType;
+  File? _selectedImage;
+  String? _base64Image;
   static const baseUrl = Config.baseUrl;
   final CarService carService = CarService(baseUrl: baseUrl);
 
   @override
-  void initState() {
-    super.initState();
-    _loadCarInformation();
+  void dispose() {
+    _dateController.dispose();
+    _carController.dispose();
+    _insuranceController.dispose();
+    _carNumberController.dispose();
+    _mileageController.dispose();
+    super.dispose();
   }
 
-  void _selectPage(int index) {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => TabaMainScreen(
-          initialIndex: index,
-          userId: widget.userId,
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime now = DateTime.now();
+    final DateTime firstDate = DateTime(now.year - 15);
+    final DateTime lastDate =
+        DateTime(now.year + 3); // 이제 lastDate는 현재 연도로부터 10년 후
+    final ThemeData customTheme = ThemeData(
+      primaryColor: const Color(0xFF093d57),
+      colorScheme: const ColorScheme.light(
+        primary: Color(0xFF093d57),
+        onPrimary: Colors.white,
+        surface: Colors.white,
+        onSurface: Colors.black,
+      ),
+      dialogBackgroundColor: Colors.white,
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: const Color(0xFF093d57),
         ),
       ),
     );
-  }
 
-  Future<void> _loadCarInformation() async {
-    try {
-      Car car = await carService.getCarById(widget.carId.toString());
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: now, // initialDate를 현재 날짜로 설정
+      firstDate: firstDate, //15년전
+      lastDate: lastDate, //3년후
+      locale: const Locale('ko', 'KR'), // 한국어 설정
+      helpText: '구매 날짜 선택',
+      cancelText: '취소',
+      confirmText: '확인',
+      builder: (context, child) {
+        return Theme(
+          data: customTheme,
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
       setState(() {
-        carNameController.text = car.carName;
-        carYearController.text = car.purchaseDate.split('-')[0];
-        insuranceInfoController.text = car.insurance;
-        carNumberController.text = car.carNumber;
-        carSizeController.text = car.carSize;
-        currentImage = car.photo;
+        _dateController.text = "${picked.toLocal()}".split(' ')[0];
       });
-    } catch (e) {
-      print('Failed to load car information: $e');
     }
   }
 
-// 서버 업데이트 함수
-  Future<void> _updateCarInformation() async {
-    try {
-      final car = Car(
-        carId: widget.carId,
-        carName: carNameController.text,
-        carSize: selectedCarSize ?? carSizeController.text, // 서버로 보낼 값
-        totalDistance: 0,
-        carNumber: carNumberController.text,
-        insurance: insuranceInfoController.text,
-        userId: widget.userId,
-        photo: currentImage ?? '',
-        purchaseDate: '${carYearController.text}-01-01',
-      );
-
-      await carService.updateCar(widget.carId.toString(), car);
-      _showSuccessDialog('차량 정보가 업데이트되었습니다.');
-    } catch (e) {
-      print('Failed to update car information: $e');
-      _showErrorDialog('차량 정보 업데이트에 실패했습니다.');
+  Future<void> _selectImage() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    if (image != null) {
+      final bytes = await File(image.path).readAsBytes();
+      setState(() {
+        _selectedImage = File(image.path);
+        _base64Image = base64Encode(bytes);
+      });
     }
+  }
+
+  Future<void> _signUp() async {
+    // 차량 크기 변환 함수
+    String convertCarSize(String carSize) {
+      switch (carSize) {
+        case '소형':
+          return 'SMALL';
+        case '중형':
+          return 'MEDIUM';
+        case '대형':
+          return 'LARGE';
+        default:
+          return '';
+      }
+    }
+
+    bool validateFields() {
+      print("Car: ${_carController.text}");
+      print("Car Type: $_selectedCarType");
+      print("Mileage: ${_mileageController.text}");
+      print("Car Number: ${_carNumberController.text}");
+      print("Insurance: ${_insuranceController.text}");
+      print("Date: ${_dateController.text}");
+      print("Image: $_base64Image");
+
+      if (_carController.text.isEmpty ||
+          _selectedCarType == null ||
+          _mileageController.text.isEmpty ||
+          _carNumberController.text.isEmpty ||
+          _insuranceController.text.isEmpty ||
+          _dateController.text.isEmpty ||
+          _base64Image == null) {
+        return false;
+      }
+      return true;
+    }
+
+// 필드가 비어있으면 다이얼로그 표시
+    if (!validateFields()) {
+      CustomAlertDialog(
+        context: context,
+        title: 'TABA',
+        message: '모든 정보를 입력해야 합니다!',
+      ).show();
+      return;
+    }
+
+    // 모든 정보가 입력된 경우 확인 다이얼로그 표시
+    YesNoDialog(
+      context: context,
+      message: '입력하신 정보가 맞으십니까?',
+      yesText: '네',
+      noText: '아니요',
+      onYesPressed: () async {
+        Navigator.of(context).pop();
+
+        final car = Car(
+            carName: _carController.text,
+            carSize: convertCarSize(_selectedCarType ?? ''),
+            totalDistance: int.tryParse(_mileageController.text
+                    .replaceAll('Km', '')
+                    .replaceAll(',', '')) ??
+                0,
+            carNumber: _carNumberController.text,
+            insurance: _insuranceController.text,
+            userId: widget.userId,
+            photo: _base64Image ?? '',
+            purchaseDate: _dateController.text,
+            drivingScore: 100);
+
+        try {
+          final response = await carService.addCar(car);
+
+          if (!mounted) return;
+
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => TabaMainScreen(userId: widget.userId),
+            ),
+          );
+        } catch (e) {
+          print('Failed to create car. Error: $e');
+          CustomAlertDialog(
+            context: context,
+            title: '오류',
+            message: '서버 오류가 발생했습니다.',
+          ).show();
+        }
+      },
+      onNoPressed: () => Navigator.of(context).pop(),
+    ).show();
   }
 
   void _showErrorDialog(String message) {
@@ -95,24 +203,20 @@ class _UserCarInformationState extends State<UserCarInformation> {
       builder: (BuildContext context) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
+            side: const BorderSide(color: Color(0xFFB00020)),
             borderRadius: BorderRadius.circular(8.0),
           ),
-          backgroundColor: const Color.fromARGB(255, 242, 125, 104),
+          backgroundColor: Colors.white,
           content: Text(
             message,
             style: GoogleFonts.notoSans(
-              fontSize: 18,
-              fontWeight: FontWeight.w500,
-              color: Colors.white,
+              fontSize: 16,
+              color: Colors.black,
             ),
             textAlign: TextAlign.center,
           ),
           actions: [
             TextButton(
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.white,
-                backgroundColor: const Color.fromARGB(255, 232, 99, 75),
-              ),
               onPressed: () {
                 Navigator.of(context).pop();
               },
@@ -120,147 +224,11 @@ class _UserCarInformationState extends State<UserCarInformation> {
                 '확인',
                 style: GoogleFonts.notoSans(
                   fontSize: 16,
-                  color: Colors.white,
+                  color: const Color(0xFFB00020),
                 ),
               ),
             ),
           ],
-        );
-      },
-    );
-  }
-
-  void _showSuccessDialog(String message) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8.0),
-          ),
-          backgroundColor: const Color.fromARGB(255, 244, 203, 150),
-          content: Text(
-            message,
-            style: GoogleFonts.notoSans(
-              fontSize: 18,
-              fontWeight: FontWeight.w500,
-              color: Colors.white,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          actions: [
-            TextButton(
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.white,
-                backgroundColor: const Color(0xFFE8A44B),
-              ),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: Text(
-                '확인',
-                style: GoogleFonts.notoSans(
-                  fontSize: 16,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  // 차량 사이즈를 매핑하기 위한 맵 변수 추가
-  Map<String, String> carSizeMap = {
-    '대형': 'LARGE',
-    '중형': 'MEDIUM',
-    '소형': 'SMALL'
-  };
-
-  /// 차량 사이즈 선택과 서버 전송 값을 관리하기 위한 변수
-  String? selectedCarSize;
-
-// 차량 사이즈 선택 다이얼로그
-  Future<void> _showCarSizeDialog() async {
-    return showDialog<void>(
-      context: context,
-      barrierDismissible: true, // 다이얼로그 바깥을 터치하면 닫히도록 설정
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: const Color.fromARGB(255, 231, 182, 118),
-          title: Text(
-            '차량 사이즈',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.notoSans(
-              fontSize: 22,
-              fontWeight: FontWeight.w500,
-              color: Colors.white,
-            ),
-          ),
-          content: SingleChildScrollView(
-            child: ListBody(
-              children: <Widget>[
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFE8A44B),
-                  ),
-                  onPressed: () {
-                    selectedCarSize = 'LARGE';
-                    carSizeController.text = '대형'; // 사용자에게 보여질 값
-                    Navigator.of(context).pop();
-                  },
-                  child: Text(
-                    '대형',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.notoSans(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w400,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFE8A44B),
-                  ),
-                  onPressed: () {
-                    selectedCarSize = 'MEDIUM';
-                    carSizeController.text = '중형';
-                    Navigator.of(context).pop();
-                  },
-                  child: Text(
-                    '중형',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.notoSans(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w400,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFE8A44B),
-                  ),
-                  onPressed: () {
-                    selectedCarSize = 'SMALL';
-                    carSizeController.text = '소형';
-                    Navigator.of(context).pop();
-                  },
-                  child: Text(
-                    '소형',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.notoSans(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w400,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
         );
       },
     );
@@ -272,166 +240,276 @@ class _UserCarInformationState extends State<UserCarInformation> {
     final screenHeight = MediaQuery.of(context).size.height;
 
     return Scaffold(
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(kToolbarHeight),
-        child: Container(
-          decoration: const BoxDecoration(
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black26,
-                blurRadius: 1,
-              ),
-            ],
-          ),
-          child: AppBar(
-            title: Text(
-              '정보수정',
-              style: GoogleFonts.notoSans(
-                fontWeight: FontWeight.bold,
-                fontSize: 19,
-              ),
-            ),
-            backgroundColor: Colors.white,
-            centerTitle: true,
-            leading: IconButton(
-              iconSize: 18,
-              icon: const Icon(Icons.arrow_back_ios_outlined),
-              onPressed: () => Navigator.pop(context),
-            ),
-          ),
-        ),
-      ),
+      appBar: const SubAppBar(),
       body: SingleChildScrollView(
         child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.066667),
+          padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.06666),
           child: Column(
-            children: <Widget>[
-              SizedBox(height: screenHeight * 0.05),
-              Hero(
-                tag: 'car_${widget.carId}',
-                child: GestureDetector(
-                  onTap: pickImage,
-                  child: CircleAvatar(
-                    radius: screenWidth * 0.18889,
-                    backgroundImage: currentImage != null
-                        ? MemoryImage(base64Decode(currentImage!))
-                        : null,
-                    child: currentImage == null
-                        ? const Icon(Icons.add_a_photo, size: 40)
-                        : null,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(height: screenHeight * 0.0375),
+              const Text(
+                '차량 사진을 업로드하세요.',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+              ),
+              SizedBox(height: screenHeight * 0.0125),
+              GestureDetector(
+                onTap: _selectImage,
+                child: _selectedImage != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(8.0),
+                        child: Image.file(
+                          _selectedImage!,
+                          width: screenWidth * 0.8666667,
+                          height: screenHeight * 0.25,
+                          fit: BoxFit.cover,
+                        ),
+                      )
+                    : Container(
+                        width: screenWidth * 0.8666667,
+                        height: screenHeight * 0.25,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                        child: const Icon(
+                          Icons.add_circle_outline_sharp,
+                          size: 40,
+                          color: Color(0xFF595959),
+                        ),
+                      ),
+              ),
+              SizedBox(height: screenHeight * 0.0125),
+              const Text(
+                '어떤 차를 소유하고 있나요?',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+              ),
+              SizedBox(height: screenHeight * 0.0125),
+              SizedBox(
+                width: double.infinity,
+                height: screenHeight * 0.0584,
+                child: TextField(
+                  controller: _carController,
+                  decoration: const InputDecoration(
+                    hintText: 'Genesis GV80',
+                    border: OutlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFF14314A)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide:
+                          BorderSide(color: Color(0xFF14314A), width: 2.0),
+                    ),
+                    contentPadding: EdgeInsets.symmetric(
+                      vertical: 10.0,
+                      horizontal: 16,
+                    ),
                   ),
                 ),
               ),
-              SizedBox(height: screenHeight * 0.05),
-              buildEditableField("차량 이름", carNameController),
-              buildEditableField("연도", carYearController),
-              buildEditableField("보험 정보", insuranceInfoController),
-              buildEditableField("차량 번호", carNumberController),
-              carSizeField(),
-              Padding(
-                padding: EdgeInsets.symmetric(
-                    horizontal: screenWidth * 0.066667,
-                    vertical: screenHeight * 0.01875),
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    backgroundColor: const Color(0xFFE8A44B),
-                    minimumSize: const Size(312, 44),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+              SizedBox(height: screenHeight * 0.01875),
+              const Text(
+                '언제 구매 하셨나요?',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+              ),
+              SizedBox(height: screenHeight * 0.0125),
+              SizedBox(
+                width: double.infinity,
+                height: screenHeight * 0.0584,
+                child: TextField(
+                  controller: _dateController,
+                  decoration: const InputDecoration(
+                    hintText: '날짜 선택',
+                    border: OutlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFF14314A)),
                     ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide:
+                          BorderSide(color: Color(0xFF14314A), width: 2.0),
+                    ),
+                    contentPadding:
+                        EdgeInsets.symmetric(vertical: 10.0, horizontal: 16),
                   ),
-                  onPressed: _updateCarInformation,
-                  child: Center(
-                    child: Text(
-                      '수정완료',
-                      style: GoogleFonts.notoSans(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
+                  readOnly: true,
+                  onTap: () => _selectDate(context),
+                ),
+              ),
+              SizedBox(height: screenHeight * 0.01875),
+              const Text(
+                '어떤 보험에 가입 했나요?',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+              ),
+              SizedBox(height: screenHeight * 0.0125),
+              InkWell(
+                onTap: () async {
+                  final selectedInsurance = await showDialog<String>(
+                    context: context,
+                    builder: (BuildContext context) {
+                      return InsuranceDialog(
+                          insuranceController: _insuranceController);
+                    },
+                  );
+
+                  if (selectedInsurance != null) {
+                    setState(() {
+                      _insuranceController.text = selectedInsurance;
+                    });
+                  }
+                },
+                child: Container(
+                  width: double.infinity,
+                  height: screenHeight * 0.0584,
+                  padding: const EdgeInsets.symmetric(
+                      vertical: 10.0, horizontal: 16),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.black54),
+                    borderRadius: BorderRadius.circular(4.0),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _insuranceController.text.isEmpty
+                            ? '삼성화재 자동차 다이렉트 보험'
+                            : _insuranceController.text,
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: _insuranceController.text.isEmpty
+                              ? Colors.black45 // 선택 전 힌트 텍스트 색상
+                              : Colors.black87, // 선택 후 텍스트 색상
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(height: screenHeight * 0.01875),
+              const Text(
+                '차량 번호를 알려주세요.',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+              ),
+              SizedBox(height: screenHeight * 0.0125),
+              SizedBox(
+                width: double.infinity,
+                height: screenHeight * 0.0584,
+                child: TextField(
+                  controller: _carNumberController,
+                  decoration: const InputDecoration(
+                    hintText: '395누 2548',
+                    border: OutlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFF14314A)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide:
+                          BorderSide(color: Color(0xFF14314A), width: 2.0),
+                    ),
+                    contentPadding:
+                        EdgeInsets.symmetric(vertical: 10.0, horizontal: 16),
+                  ),
+                ),
+              ),
+              SizedBox(height: screenHeight * 0.01875),
+              const Text(
+                '총 주행거리는 얼마인가요?',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+              ),
+              SizedBox(height: screenHeight * 0.0125),
+              SizedBox(
+                width: double.infinity,
+                height: screenHeight * 0.0584,
+                child: TextField(
+                  controller: _mileageController,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: <TextInputFormatter>[
+                    LengthLimitingTextInputFormatter(12),
+                    FilteringTextInputFormatter.digitsOnly,
+                    TextInputFormatter.withFunction((oldValue, newValue) {
+                      final newText = '${newValue.text.replaceAllMapped(
+                        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+                        (Match match) => '${match[1]},',
+                      )}Km';
+                      return TextEditingValue(
+                        text: newText,
+                        selection:
+                            TextSelection.collapsed(offset: newText.length - 2),
+                      );
+                    }),
+                  ],
+                  decoration: const InputDecoration(
+                    hintText: '104300Km',
+                    border: OutlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFF14314A)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide:
+                          BorderSide(color: Color(0xFF14314A), width: 2.0),
+                    ),
+                    contentPadding:
+                        EdgeInsets.symmetric(vertical: 10.0, horizontal: 16),
+                  ),
+                ),
+              ),
+              SizedBox(height: screenHeight * 0.01875),
+              const Text(
+                '차급은 어떻게 되나요?',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+              ),
+              SizedBox(height: screenHeight * 0.0125),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: ['소형', '중형', '대형'].map((carType) {
+                  final isSelected = _selectedCarType == carType;
+                  return Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                          horizontal: screenWidth * 0.01111),
+                      child: ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _selectedCarType = carType;
+                          });
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isSelected
+                              ? const Color(0xFF14314A)
+                              : const Color(0xFFD9D9D9),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8.0),
+                          ),
+                        ),
+                        child: Text(
+                          carType,
+                          style: TextStyle(
+                            color: isSelected ? Colors.white : Colors.black,
+                          ),
+                        ),
                       ),
                     ),
+                  );
+                }).toList(),
+              ),
+              SizedBox(height: screenHeight * 0.05),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  minimumSize: Size(double.infinity, screenHeight * 0.07142),
+                  foregroundColor: Colors.white,
+                  backgroundColor: const Color(0xFF213E57),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(7.0),
+                  ),
+                ),
+                onPressed: _signUp,
+                child: const SizedBox(
+                  width: double.infinity,
+                  child: Text(
+                    '차량 정보 입력하기',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
                   ),
                 ),
               ),
+              SizedBox(height: screenHeight * 0.0125),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget buildEditableField(String label, TextEditingController controller) {
-    final screenHeight = MediaQuery.of(context).size.height;
-    final screenWidth = MediaQuery.of(context).size.width;
-    return Padding(
-      padding: EdgeInsets.symmetric(
-          horizontal: screenWidth * 0.0666667, vertical: screenHeight * 0.0125),
-      child: SizedBox(
-        width: double.infinity,
-        height: screenHeight * 0.058,
-        child: TextFormField(
-          controller: controller,
-          decoration: InputDecoration(
-            hintText: label,
-            hintStyle: const TextStyle(
-              color: Colors.black,
-            ),
-            border: InputBorder.none,
-            focusedBorder: const OutlineInputBorder(
-              borderSide: BorderSide(color: Color(0xFF14314A), width: 2.0),
-            ),
-            suffixIcon: TextButton(
-              onPressed: () {},
-              child: Text(
-                '수정',
-                style: GoogleFonts.notoSans(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w200,
-                  color: const Color(0xFF8C8C8C),
-                ),
-              ),
-            ),
-            fillColor: const Color(0xFFF5F5F5),
-            filled: true,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> pickImage() async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-    if (image != null) {
-      final bytes = await image.readAsBytes();
-      setState(() {
-        currentImage = base64Encode(bytes);
-      });
-    }
-  }
-
-// 텍스트 필드의 테두리 제거 및 UI 수정
-  Widget carSizeField() {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
-
-    return Padding(
-      padding: EdgeInsets.symmetric(
-          horizontal: screenWidth * 0.0666667, vertical: screenHeight * 0.0125),
-      child: SizedBox(
-        width: double.infinity,
-        height: screenHeight * 0.058,
-        child: TextField(
-          controller: carSizeController,
-          decoration: const InputDecoration(
-            hintText: "차량 사이즈 선택",
-            hintStyle: TextStyle(color: Colors.black),
-            border: InputBorder.none,
-            filled: true,
-            fillColor: Color(0xFFF5F5F5),
-          ),
-          readOnly: true,
-          onTap: _showCarSizeDialog,
         ),
       ),
     );
