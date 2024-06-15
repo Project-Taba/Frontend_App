@@ -160,18 +160,18 @@ class _CarAddInformationState extends State<CarAddInformation> {
         Navigator.of(context).pop();
 
         final car = Car(
-          carName: _carController.text,
-          carSize: convertCarSize(_selectedCarType ?? ''),
-          totalDistance: int.tryParse(_mileageController.text
-                  .replaceAll('Km', '')
-                  .replaceAll(',', '')) ??
-              0,
-          carNumber: _carNumberController.text,
-          insurance: _insuranceController.text,
-          userId: widget.userId,
-          photo: _base64Image ?? '',
-          purchaseDate: _dateController.text,
-        );
+            carName: _carController.text,
+            carSize: convertCarSize(_selectedCarType ?? ''),
+            totalDistance: int.tryParse(_mileageController.text
+                    .replaceAll('Km', '')
+                    .replaceAll(',', '')) ??
+                0,
+            carNumber: _carNumberController.text,
+            insurance: _insuranceController.text,
+            userId: widget.userId,
+            photo: _base64Image ?? '',
+            purchaseDate: _dateController.text,
+            drivingScore: 100);
 
         try {
           final response = await carService.addCar(car);
