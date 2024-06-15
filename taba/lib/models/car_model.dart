@@ -8,7 +8,7 @@ class Car {
   final int userId;
   final String insurance;
   final String purchaseDate;
-  final int? drivingScore;
+  final int drivingScore;
 
   Car({
     this.carId,
@@ -20,7 +20,7 @@ class Car {
     required this.userId,
     required this.insurance,
     required this.purchaseDate,
-    this.drivingScore,
+    required this.drivingScore,
   });
 
   factory Car.fromJson(Map<String, dynamic> json) {
@@ -34,7 +34,7 @@ class Car {
       userId: json['userId'] as int,
       insurance: json['insurance'] as String,
       purchaseDate: json['purchaseDate'] as String,
-      drivingScore: json['drivingScore'] as int?,
+      drivingScore: json['driving_score'] as int,
     );
   }
 
@@ -49,7 +49,7 @@ class Car {
       'userId': userId,
       'insurance': insurance,
       'purchaseDate': purchaseDate,
-      'drivingScore': drivingScore,
+      'driving_score': drivingScore,
     };
   }
 }
